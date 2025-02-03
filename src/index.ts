@@ -47,18 +47,52 @@ export default {
 			const total = items.length;
 			const completed = items.filter((item: any) => item.properties[`${propertyName}`].status.name === `${condition}`).length;
 			const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-			const svg = `<svg width="300" height="100" xmlns="http://www.w3.org/2000/svg">
-          <rect width="300" height="100" fill="#f4f4f4" rx="10" />
-          <rect width="${progress * 3}" height="100" fill="#4caf50" rx="10" />
-          <text x="50%" y="50%" font-size="20" font-family="Arial" fill="#000" dominant-baseline="middle" text-anchor="middle">
-            ${progress}% 완료 (${completed}/${total})
-          </text>
-        </svg>`.trim();
+			const html = `
+		<!DOCTYPE html>
+        <html lang="ko">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              text-align: center;
+              background-color: #f4f4f4;
+              border-radius: 10px;
+              padding: 20px;
+              width: 300px;
+              height: 100px;
+            }
+            .progress-container {
+              width: 100%;
+              background-color: #ddd;
+              border-radius: 5px;
+              overflow: hidden;
+            }
+            .progress-bar {
+              width: ${progress}%;
+              height: 20px;
+              background-color: #4caf50;
+              text-align: center;
+              line-height: 20px;
+              color: white;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+        <body>
+          <h3>진행도: ${progress}% (${completed}/${total})</h3>
+          <div class="progress-container">
+            <div class="progress-bar">${progress}%</div>
+          </div>
+        </body>
+        </html>
+		`;
 
-			return new Response(svg, {
+			return new Response(html, {
 				status: 200,
 				headers: {
-					'Content-Type': 'image/svg+xml',
+					'Content-Type': 'text/html',
 					'Cache-Control': 'no-cache',
 					'Access-Control-Allow-Origin': '*', // CORS 해결
 					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -67,9 +101,9 @@ export default {
 			});
 		} catch (error) {
 			// 노션 API 응답 확인
-			return new Response(`<svg width="300" height="100"><text x="10" y="50" font-size="20">오류 발생</text></svg>`, {
+			return new Response(`<h3>오류 발생</h3>`, {
 				status: 500,
-				headers: { 'Content-Type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*' },
+				headers: { 'Content-Type': 'text/html', 'Access-Control-Allow-Origin': '*' },
 			});
 		}
 	},
