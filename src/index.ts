@@ -46,14 +46,20 @@ export default {
 			const items = data.results;
 			const total = items.length;
 			const completed = items.filter((item: any) => item.properties[`${propertyName}`].status.name === `${condition}`).length;
-
-			// 진행도 퍼센트 계산
 			const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+			const svg = `<svg width="300" height="100" xmlns="http://www.w3.org/2000/svg">
+          <rect width="300" height="100" fill="#f4f4f4" rx="10" />
+          <rect width="${progress * 3}" height="100" fill="#4caf50" rx="10" />
+          <text x="50%" y="50%" font-size="20" font-family="Arial" fill="#000" dominant-baseline="middle" text-anchor="middle">
+            ${progress}% 완료 (${completed}/${total})
+          </text>
+        </svg>`.trim();
 
-			return new Response(JSON.stringify({ total, completed, progress }), {
+			return new Response(svg, {
 				status: 200,
 				headers: {
-					'Content-Type': 'application/json',
+					'Content-Type': 'image/svg+xml',
+					'Cache-Control': 'no-cache',
 					'Access-Control-Allow-Origin': '*', // CORS 해결
 					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 					'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -61,9 +67,9 @@ export default {
 			});
 		} catch (error) {
 			// 노션 API 응답 확인
-			return new Response(JSON.stringify({ error }), {
+			return new Response(`<svg width="300" height="100"><text x="10" y="50" font-size="20">오류 발생</text></svg>`, {
 				status: 500,
-				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+				headers: { 'Content-Type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*' },
 			});
 		}
 	},
