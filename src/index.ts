@@ -1,110 +1,149 @@
+export interface Env {
+	VISITOR_COUNT: KVNamespace;
+	NOTION_API_KEY: string;
+}
+
 export default {
-	async fetch(request: Request): Promise<Response> {
+	async fetch(request: Request, env: Env): Promise<Response> {
+		const url = new URL(request.url);
+		const pathname = url.pathname;
+
+		// 공통 CORS 헤더
+		const corsHeaders = {
+			'Access-Control-Allow-Origin': '*',
+			'Access-Control-Allow-Methods': 'GET, OPTIONS',
+			'Access-Control-Allow-Headers': 'Content-Type',
+		};
+
 		if (request.method === 'OPTIONS') {
-			return new Response(null, {
-				status: 204,
-				headers: {
-					'Access-Control-Allow-Origin': '*',
-					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-					'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-				},
-			});
+			return new Response(null, { headers: corsHeaders });
 		}
-		try {
-			const url = new URL(request.url);
-			const apiKey = url.searchParams.get('api_key');
-			const databaseId = url.searchParams.get('database_id');
-			const propertyName = url.searchParams.get('property_name');
-			const condition = url.searchParams.get('condition');
 
-			// API 키와 데이터베이스 ID가 없으면 오류 반환
-			if (!apiKey || !databaseId || !propertyName || !condition) {
-				return new Response(JSON.stringify({ error: 'Missing api_key or database_id or property_name or condition' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-				});
-			}
-
-			const notionApiUrl = `https://api.notion.com/v1/databases/${databaseId}/query`;
-
-			const response = await fetch(notionApiUrl, {
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${apiKey}`,
-					'Content-Type': 'application/json',
-					'Notion-Version': '2022-06-28',
-					'Access-Control-Allow-Origin': '*',
-					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-					'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-				},
-				body: JSON.stringify({}),
-			});
-
-			const data = (await response.json()) as any;
-
-			// "완료" 상태인 항목 개수 계산
-			const items = data.results;
-			const total = items.length;
-			const completed = items.filter((item: any) => item.properties[`${propertyName}`].status.name === `${condition}`).length;
-			const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-			const html = `
-		<!DOCTYPE html>
-        <html lang="ko">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              text-align: center;
-              background-color: #f4f4f4;
-              border-radius: 10px;
-              padding: 20px;
-              width: 300px;
-              height: 100px;
-            }
-            .progress-container {
-              width: 100%;
-              background-color: #ddd;
-              border-radius: 5px;
-              overflow: hidden;
-            }
-            .progress-bar {
-              width: ${progress}%;
-              height: 20px;
-              background-color: #4caf50;
-              text-align: center;
-              line-height: 20px;
-              color: white;
-              font-weight: bold;
-            }
-          </style>
-        </head>
-        <body>
-          <h3>진행도: ${progress}% (${completed}/${total})</h3>
-          <div class="progress-container">
-            <div class="progress-bar">${progress}%</div>
-          </div>
-        </body>
-        </html>
-		`;
-
-			return new Response(html, {
-				status: 200,
-				headers: {
-					'Content-Type': 'text/html',
-					'Cache-Control': 'no-cache',
-					'Access-Control-Allow-Origin': '*', // CORS 해결
-					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-					'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-				},
-			});
-		} catch (error) {
-			// 노션 API 응답 확인
-			return new Response(`<h3>오류 발생</h3>`, {
-				status: 500,
-				headers: { 'Content-Type': 'text/html', 'Access-Control-Allow-Origin': '*' },
-			});
+		// 라우팅 처리
+		if (pathname.startsWith('/progress')) {
+			return handleProgress(url, env, corsHeaders);
+		} else if (pathname.startsWith('/visit')) {
+			return handleVisit(url, env, corsHeaders);
+		} else if (pathname.startsWith('/allowance')) {
+			return new Response('Allowance feature not implemented yet', { status: 501 });
+		} else {
+			return new Response('Not Found', { status: 404 });
 		}
 	},
 };
+
+// 📌 진행도 조회 (Notion API)
+async function handleProgress(url: URL, env: Env, corsHeaders: HeadersInit): Promise<Response> {
+	const apiKey = url.searchParams.get('api_key');
+	const databaseId = url.searchParams.get('database_id');
+	const propertyName = url.searchParams.get('property_name') || '상태';
+	const condition = url.searchParams.get('condition') || '완료';
+	const format = url.searchParams.get('format') || 'json';
+
+	if (!apiKey || !databaseId) {
+		return new Response('Missing API Key or Database ID', { status: 400, headers: corsHeaders });
+	}
+
+	const notionResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			'Notion-Version': '2022-06-28',
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({}),
+	});
+
+	if (!notionResponse.ok) {
+		return new Response(`Notion API Error: ${notionResponse.statusText}`, { status: 500, headers: corsHeaders });
+	}
+
+	const notionData = (await notionResponse.json()) as any;
+	const total = notionData.results.length;
+	const completed = notionData.results.filter((page: any) => page.properties[propertyName]?.status?.name === condition).length;
+	const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+	const responseData = { total, completed, progress };
+
+	return formatResponse(responseData, format, corsHeaders, 'Progress');
+}
+
+// 📌 방문자 수 카운트 (KV 사용)
+async function handleVisit(url: URL, env: Env, corsHeaders: HeadersInit): Promise<Response> {
+	const databaseId = url.searchParams.get('database_id') || url.searchParams.get('page_id');
+	const format = url.searchParams.get('format') || 'json';
+	const today = new Date().toISOString().split('T')[0];
+
+	const totalKey = `total_visits_${databaseId}`;
+	const todayKey = `visits_${databaseId}_${today}`;
+	const pagePath = url.searchParams.get('url');
+	const pageKey = pagePath ? `visits_${pagePath}` : null;
+
+	async function incrementVisit(key: string) {
+		const currentCount = (await env.VISITOR_COUNT.get(key)) || '0';
+		const newCount = parseInt(currentCount) + 1;
+		await env.VISITOR_COUNT.put(key, newCount.toString());
+		return newCount;
+	}
+
+	const totalVisits = await incrementVisit(totalKey);
+	const todayVisits = await incrementVisit(todayKey);
+	const pageVisits = pageKey ? await incrementVisit(pageKey) : null;
+
+	const responseData: any = {
+		total: totalVisits,
+		today: todayVisits,
+	};
+	if (pageKey) responseData.page = { url: pagePath, count: pageVisits };
+
+	return formatResponse(responseData, format, corsHeaders, 'Visitors');
+}
+
+// 📌 응답 포맷 변환
+function formatResponse(data: any, format: string, corsHeaders: HeadersInit, title: string): Response {
+	if (format === 'json') {
+		return new Response(JSON.stringify(data), {
+			headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+		});
+	}
+
+	if (format === 'svg') {
+		const svg = `
+		<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+		  <rect width="100%" height="100%" fill="white" />
+		  <text x="10" y="40" font-size="18" fill="black">${title}</text>
+		  <text x="10" y="80" font-size="16" fill="black">${JSON.stringify(data)}</text>
+		</svg>`;
+		return new Response(svg, { headers: { ...corsHeaders, 'Content-Type': 'image/svg+xml' } });
+	}
+
+	if (format === 'iframe') {
+		const html = `
+		<html>
+		  <head>
+		  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.min.css" rel="stylesheet" type="text/css" />
+		  <script src="https://cdn.tailwindcss.com"></script>
+			<style>
+			  body { font-family: Arial, sans-serif;}
+			  @media (prefers-color-scheme: dark) {
+			  body {
+			 	background-color: #191919 !important; 
+			  }
+			  }
+			</style>
+		  </head>
+		  <body>
+			<div class="stats shadow">
+				<div class="stat">
+					<div class="stat-title">Total Page Views</div>
+					<div class="stat-value text-primary">${data.total.toLocaleString('ko-KR')}</div>
+					<div class="stat-desc">Today: ${data.today.toLocaleString('ko-KR')}</div>
+				</div>
+			</div>
+		  </body>
+		</html>`;
+		return new Response(html, { headers: { ...corsHeaders, 'Content-Type': 'text/html' } });
+	}
+
+	return new Response('Invalid format', { status: 400, headers: corsHeaders });
+}
