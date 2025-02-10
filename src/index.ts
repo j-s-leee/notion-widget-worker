@@ -72,7 +72,12 @@ async function handleProgress(url: URL, env: Env, corsHeaders: HeadersInit): Pro
 async function handleVisit(url: URL, env: Env, corsHeaders: HeadersInit): Promise<Response> {
 	const databaseId = url.searchParams.get('database_id') || url.searchParams.get('page_id');
 	const format = url.searchParams.get('format') || 'json';
-	const today = new Date().toISOString().split('T')[0];
+	const today = new Intl.DateTimeFormat('fr-CA', {
+		timeZone: 'Asia/Seoul',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+	}).format(new Date());
 
 	const totalKey = `total_visits_${databaseId}`;
 	const todayKey = `visits_${databaseId}_${today}`;
